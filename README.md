@@ -44,6 +44,7 @@ Wireless (Nordic) protocol based on [python-pulsar-mouse-tool](https://github.co
 | Pulsar X2H Wired Medium | `x2h` | `3710:1403` | Fully supported |
 | Pulsar X2A Medium Wired | `x2a` | `3710:1404` | Fully supported |
 | Pulsar Xlite v4 | `xlite_v4` | `3710:3401` | Untested (same Sonix protocol) |
+| Pulsar X3 Wired | `x3` | `3710:3409` | Supported (same Sonix protocol as the Xlite v4; battery while charging, sleep timer and Low Power Mode confirmed on hardware on its cable) |
 | Pulsar 1K Wireless Dongle | `xlite_v4_wireless` | `3710:5402` | Supported (1K wireless dongle shared by the Fusion2 line, same Sonix protocol; battery, charging, sleep timer, Low Power Mode, link quality and which mouse is on the dongle confirmed on hardware with a Pulsar X3) |
 | Pulsar Feinmann 8K / FO1 | `feinmann8k` | `3710:5404` | Fully supported (wireless dongle, 8K Hz polling, 6 onboard profiles) |
 | Pulsar X2A Wireless / X2 V2 Mini | `nordic` | `3554:f507` `3554:f508` | Supported (Nordic chipset, battery status) |

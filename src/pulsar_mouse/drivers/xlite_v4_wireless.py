@@ -39,11 +39,76 @@ from pulsar_mouse.drivers.xlite_v4 import PulsarXliteV4
 # more models than these; add a line once a dongle has been seen naming it.
 CONNECTED_MOUSE_NAMES = {
     0x3401: 'Pulsar Xlite v4',   # xlite_v4.py's cabled PID
-    0x3409: 'Pulsar X3',         # confirmed on hardware
+    0x3409: 'Pulsar X3',         # x3.py's; confirmed on hardware
 }
 
 
-class PulsarXliteV4Wireless(PulsarXliteV4):
+class Fusion2Power:
+    """The power category of the Fusion2 line: cat 0x08 on the Sonix protocol.
+
+    Shared by the 1K dongle, which relays the questions to whichever mouse it
+    carries, and by a Fusion2 mouse on its cable, which answers them itself
+    (confirmed with a Pulsar X3: 87% and charging, on the cable, in 1 ms).
+    Mixed into a PulsarX2A-family driver; needs only its _read()/_cmd().
+    """
+
+    # ── Power ─────────────────────────────────────────────────────────────
+
+    def get_power(self) -> dict:
+        # cat=0x08/reg=0x81(=0x01|0x80)/sub=0x01, profile 0, no payload:
+        # reply byte[6] is the battery percentage, as on the 8K dongle.
+        # The dongle answers 0xFF when it has no mouse to ask; the mouse on
+        # its cable answers for itself.
+        pct = self._read(0x08, 0x01, 0x01, 0x00)[6]
+        if pct == 0xFF:
+            raise IOError('no battery reading — is the mouse awake and paired?')
+        # cat=0x08/reg=0x83(=0x03|0x80)/sub=0x01: byte[6] is 1 while the
+        # mouse is on its charging cable, 0 otherwise.  Both states seen in
+        # the capture, where the flag drops as the cable comes out.
+        charging = bool(self._read(0x08, 0x03, 0x01, 0x00)[6])
+        return {
+            'battery_percent': pct,
+            'power_connected': charging,
+            'battery_mv': None,
+        }
+
+    def get_power_saving_timeout(self) -> int:
+        # cat=0x08/reg=0x85(=0x05|0x80)/sub=0x03, no payload: reply bytes
+        # [7:9] are the sleep timer in seconds, uint16 little-endian.  In the
+        # capture Fusion2's slider produced 30, 60, 120, 180 and 300 s here,
+        # each byte-exact between the write and the read that followed it.
+        # Stored per profile, as on the 8K dongle: Fusion2 asks profile by
+        # profile, and a write through profile 0 changed profile 1's copy
+        # (the active one) and left profiles 2-5 alone.  Profile 0 is used
+        # here as for the rest of this family's unprofiled settings.
+        rsp = self._read(0x08, 0x05, 0x03, 0x00)
+        return struct.unpack_from('<H', rsp, 7)[0]
+
+    def set_power_saving_timeout(self, seconds: int) -> None:
+        # cat=0x08/reg=0x05/sub=0x03, payload uint16 LE seconds, the same
+        # layout the read returns.  Range from Fusion2's slider (30 s to
+        # 15 min), as on the 8K dongle.
+        lo, hi, _step = self.capabilities.power_saving_range
+        if not lo <= seconds <= hi:
+            raise ValueError(f"Power-saving timeout must be {lo}-{hi} seconds")
+        self._cmd(0x08, 0x05, 0x03, 0x00, list(struct.pack('<H', seconds)))
+
+    def get_low_power_threshold(self) -> int:
+        # cat=0x08/reg=0x88(=0x08|0x80)/sub=0x02, no payload: reply byte[7]
+        # is the Low Power Mode percentage.  Fusion2 wrote 5, 6, 10, 14, 15,
+        # 25, 26 and 47 here while its slider was dragged, so the byte is
+        # the percentage itself and not an index into a table.  Per profile
+        # and addressed through profile 0, like the sleep timer above.
+        return self._read(0x08, 0x08, 0x02, 0x00)[7]
+
+    def set_low_power_threshold(self, percent: int) -> None:
+        # cat=0x08/reg=0x08/sub=0x02, payload [percent].
+        if not 0 <= percent <= 100:
+            raise ValueError("Low power threshold must be 0-100")
+        self._cmd(0x08, 0x08, 0x02, 0x00, [percent])
+
+
+class PulsarXliteV4Wireless(Fusion2Power, PulsarXliteV4):
     """Driver for Pulsar Fusion2 mice through the 1K wireless dongle."""
 
     capabilities: DeviceCapabilities = DeviceCapabilities(
@@ -129,60 +194,6 @@ class PulsarXliteV4Wireless(PulsarXliteV4):
 
     def _read(self, cat, reg, sub, profile, payload=()):
         return self._transact(self._build_read(cat, reg, sub, profile, payload))
-
-    # ── Power ─────────────────────────────────────────────────────────────
-
-    def get_power(self) -> dict:
-        # cat=0x08/reg=0x81(=0x01|0x80)/sub=0x01, profile 0, no payload:
-        # reply byte[6] is the battery percentage, as on the 8K dongle.
-        # The dongle answers 0xFF when it has no mouse to ask.
-        pct = self._read(0x08, 0x01, 0x01, 0x00)[6]
-        if pct == 0xFF:
-            raise IOError('no battery reading — is the mouse awake and paired?')
-        # cat=0x08/reg=0x83(=0x03|0x80)/sub=0x01: byte[6] is 1 while the
-        # mouse is on its charging cable, 0 otherwise.  Both states seen in
-        # the capture, where the flag drops as the cable comes out.
-        charging = bool(self._read(0x08, 0x03, 0x01, 0x00)[6])
-        return {
-            'battery_percent': pct,
-            'power_connected': charging,
-            'battery_mv': None,
-        }
-
-    def get_power_saving_timeout(self) -> int:
-        # cat=0x08/reg=0x85(=0x05|0x80)/sub=0x03, no payload: reply bytes
-        # [7:9] are the sleep timer in seconds, uint16 little-endian.  In the
-        # capture Fusion2's slider produced 30, 60, 120, 180 and 300 s here,
-        # each byte-exact between the write and the read that followed it.
-        # Stored per profile, as on the 8K dongle: Fusion2 asks profile by
-        # profile, and a write through profile 0 changed profile 1's copy
-        # (the active one) and left profiles 2-5 alone.  Profile 0 is used
-        # here as for the rest of this family's unprofiled settings.
-        rsp = self._read(0x08, 0x05, 0x03, 0x00)
-        return struct.unpack_from('<H', rsp, 7)[0]
-
-    def set_power_saving_timeout(self, seconds: int) -> None:
-        # cat=0x08/reg=0x05/sub=0x03, payload uint16 LE seconds, the same
-        # layout the read returns.  Range from Fusion2's slider (30 s to
-        # 15 min), as on the 8K dongle.
-        lo, hi, _step = self.capabilities.power_saving_range
-        if not lo <= seconds <= hi:
-            raise ValueError(f"Power-saving timeout must be {lo}-{hi} seconds")
-        self._cmd(0x08, 0x05, 0x03, 0x00, list(struct.pack('<H', seconds)))
-
-    def get_low_power_threshold(self) -> int:
-        # cat=0x08/reg=0x88(=0x08|0x80)/sub=0x02, no payload: reply byte[7]
-        # is the Low Power Mode percentage.  Fusion2 wrote 5, 6, 10, 14, 15,
-        # 25, 26 and 47 here while its slider was dragged, so the byte is
-        # the percentage itself and not an index into a table.  Per profile
-        # and addressed through profile 0, like the sleep timer above.
-        return self._read(0x08, 0x08, 0x02, 0x00)[7]
-
-    def set_low_power_threshold(self, percent: int) -> None:
-        # cat=0x08/reg=0x08/sub=0x02, payload [percent].
-        if not 0 <= percent <= 100:
-            raise ValueError("Low power threshold must be 0-100")
-        self._cmd(0x08, 0x08, 0x02, 0x00, [percent])
 
     # ── Identity ──────────────────────────────────────────────────────────
 
