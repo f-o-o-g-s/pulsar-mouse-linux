@@ -381,12 +381,17 @@ def main():
         device.open()
         try:
             dpi_info = device.get_dpi_stages(profile=profile)
+            # Every driver has the method (the base class declares it) but
+            # only the Nordic and Feinmann ones implement it; the rest raise.
+            try:
+                active_profile = device.get_active_profile()
+            except NotImplementedError:
+                active_profile = None
             status = {
                 'wireless': hasattr(device, 'get_power'),
                 'profile': profile,
                 'num_profiles': caps.num_profiles,
-                'active_profile': (device.get_active_profile()
-                                    if hasattr(device, 'get_active_profile') else None),
+                'active_profile': active_profile,
                 'polling_rate': device.get_polling_rate(),
                 'polling_rates': caps.polling_rates,
                 'dpi': {
