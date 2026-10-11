@@ -645,11 +645,15 @@ class PulsarMouseApp(Adw.Application):
             # while running.
             if device.capabilities.wireless is not True:
                 return False
-            sibling = find_sibling(device)
+            # find_sibling() may open the dongle to ask which mouse it
+            # carries, so it must not run while a worker holds the device.
+            with _USB_LOCK:
+                sibling = find_sibling(device)
             if sibling is None or sibling.capabilities.wireless is not False:
                 return False
         else:
-            sibling = find_sibling(device)
+            with _USB_LOCK:
+                sibling = find_sibling(device)
             if sibling is None:
                 return False
         why = ('is gone' if not device_present(device)

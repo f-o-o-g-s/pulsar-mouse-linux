@@ -42,26 +42,77 @@ def device_present(device: PulsarDevice) -> bool:
                for vid, pid in device.capabilities.vid_pid_pairs)
 
 
+def _carried_mouse(dongle: PulsarDevice) -> tuple[int, int] | None:
+    """The cabled (vid, pid) of the mouse a shared dongle is paired with.
+
+    None when the dongle cannot say.  Opens the dongle for the one read and
+    closes it again, so the caller must not be holding it open; the GUI
+    takes its USB lock around find_sibling() for that reason.
+    """
+    try:
+        dongle.open()
+    except Exception:
+        return None
+    try:
+        ids = dongle.get_connected_mouse()
+        return (ids['vid'], ids['pid'])
+    except Exception:
+        return None
+    finally:
+        try:
+            dongle.close()
+        except Exception:
+            pass
+
+
 def find_sibling(device: PulsarDevice) -> PulsarDevice | None:
     """The same mouse on its other connection, if that one is plugged in.
 
     A mouse reached by cable and by dongle is two drivers with two PIDs and
-    often different capabilities, paired by capabilities.model_key.  This is
-    what lets the app follow a mouse across a swap — plug the cable in to
-    charge, unplug it later — instead of reporting the connection it started
-    on as missing.
+    often different capabilities.  This is what lets the app follow a mouse
+    across a swap — plug the cable in to charge, unplug it later — instead of
+    reporting the connection it started on as missing.
 
-    None when the driver has no declared sibling, or the sibling isn't
-    plugged in.  Never returns a different model: following a swap onto
-    somebody's other Pulsar mouse would be worse than not following it.
+    Two ways to know that two drivers are one mouse.  A dongle sold with one
+    model is paired to its cabled driver by capabilities.model_key.  A dongle
+    Pulsar ships across a line has no fixed partner, so it is asked instead:
+    get_connected_mouse() returns the cabled VID:PID of the mouse it is
+    paired with, and the cabled driver claiming that ID is the sibling.  The
+    same question serves a cabled mouse: a dongle on the bus that names this
+    mouse is its other half.  Nothing is inferred from names or from a dongle
+    merely being present.
+
+    None when the driver has no declared or discoverable sibling, or the
+    sibling isn't plugged in.  Never returns a different model: following a
+    swap onto somebody's other Pulsar mouse would be worse than not following
+    it.
     """
-    key = device.capabilities.model_key
-    if not key:
-        return None
     mine = set(device.capabilities.vid_pid_pairs)
-    for candidate in scan_devices():
-        caps = candidate.capabilities
-        if caps.model_key == key and not mine & set(caps.vid_pid_pairs):
+    others = [c for c in scan_devices()
+              if not mine & set(c.capabilities.vid_pid_pairs)]
+
+    key = device.capabilities.model_key
+    if key:
+        for candidate in others:
+            if candidate.capabilities.model_key == key:
+                return candidate
+        return None
+
+    if hasattr(device, 'get_connected_mouse'):
+        # Ask the dongle only when there is a cabled mouse to match the
+        # answer against; this runs on every battery poll.
+        cabled = [c for c in others if c.capabilities.wireless is not True]
+        if not cabled:
+            return None
+        carried = _carried_mouse(device)
+        for candidate in cabled:
+            if carried in candidate.capabilities.vid_pid_pairs:
+                return candidate
+        return None
+
+    for candidate in others:
+        if (hasattr(candidate, 'get_connected_mouse')
+                and _carried_mouse(candidate) in mine):
             return candidate
     return None
 

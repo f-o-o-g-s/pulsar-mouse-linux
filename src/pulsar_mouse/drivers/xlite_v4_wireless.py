@@ -34,13 +34,23 @@ from typing import Optional
 from pulsar_mouse.base import DeviceCapabilities
 from pulsar_mouse.drivers.xlite_v4 import PulsarXliteV4
 
-# Wired PIDs the dongle has been seen reporting through get_connected_mouse(),
-# or that another driver here already claims on the cable.  Fusion2 covers
-# more models than these; add a line once a dongle has been seen naming it.
+# Cabled PIDs the dongle has been seen reporting through get_connected_mouse()
+# for mice that have no cabled driver here yet; a mouse that has one is named
+# after that driver instead.  Fusion2 covers more models than these; add a
+# line once a dongle has been seen naming it.
 CONNECTED_MOUSE_NAMES = {
     0x3401: 'Pulsar Xlite v4',   # xlite_v4.py's cabled PID
     0x3409: 'Pulsar X3',         # x3.py's; confirmed on hardware
 }
+
+
+def _cabled_name(vid: int, pid: int) -> Optional[str]:
+    from pulsar_mouse.drivers import discover_all   # not at import: it imports us
+    for cls in discover_all().values():
+        caps = cls.capabilities
+        if (vid, pid) in caps.vid_pid_pairs and caps.wireless is not True:
+            return caps.name
+    return CONNECTED_MOUSE_NAMES.get(pid)
 
 
 class Fusion2Power:
@@ -202,15 +212,16 @@ class PulsarXliteV4Wireless(Fusion2Power, PulsarXliteV4):
 
         The dongle shares one USB identity across the whole Fusion2 line,
         so this is the only way to learn which mouse is actually on it.
-        'vid'/'pid' are the IDs the mouse enumerates with on a cable;
-        'name' is None for a model this file hasn't seen yet.
+        'vid'/'pid' are the IDs the mouse enumerates with on a cable, which
+        is what find_sibling() matches a cabled driver on; 'name' is that
+        driver's, or a known name for a mouse without one, or None.
         """
         # cat=0x01/reg=0x84(=0x04|0x80)/sub=0x04, profile 0, no payload:
         # reply bytes [6:8] and [8:10] are the paired mouse's VID and PID,
         # little-endian (10 37 09 34 -> 3710:3409 in the capture).
         rsp = self._read(0x01, 0x04, 0x04, 0x00)
         vid, pid = struct.unpack_from('<HH', rsp, 6)
-        return {'vid': vid, 'pid': pid, 'name': CONNECTED_MOUSE_NAMES.get(pid)}
+        return {'vid': vid, 'pid': pid, 'name': _cabled_name(vid, pid)}
 
     # ── Hidraw events ─────────────────────────────────────────────────────
 
