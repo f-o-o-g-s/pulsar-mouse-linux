@@ -45,7 +45,7 @@ class PulsarXliteV4Wireless(PulsarXliteV4):
     """Driver for Pulsar Fusion2 mice through the 1K wireless dongle."""
 
     capabilities: DeviceCapabilities = DeviceCapabilities(
-        name='Pulsar Xlite v4 Wireless',
+        name='Pulsar 1K Wireless Dongle',
         vid_pid_pairs=[(0x3710, 0x5402)],
         interface_num=3,
         report_size=64,
