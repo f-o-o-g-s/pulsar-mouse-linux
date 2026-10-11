@@ -1,21 +1,48 @@
 """
-Pulsar Xlite v4 Wireless — protocol driver.
+Pulsar 1K wireless dongle (3710:5402) — protocol driver.
 
-The Xlite v4 1K wireless dongle uses the same 64-byte HID Feature
-Report protocol as the existing X2A/Xlite v4 implementation.
+Pulsar Fusion2 drives this dongle with the same 64-byte HID Feature Report
+protocol as the X2A / Xlite v4 (see x2a.py), so everything the Xlite v4
+driver does works through it unchanged.  Added here is what only the
+dongle has: the battery and charging readout on the power category — the
+same two registers feinmann8k.py reads on the 8K dongle — and a register
+that reports which mouse the dongle is paired with, plus the once-a-second
+link-quality report the dongle pushes on its event interface.
+
+The dongle is not specific to the Xlite v4.  Pulsar ships it with the
+rest of the Fusion2 line, and the one this was confirmed on carries an X3
+(wired PID 0x3409).  get_connected_mouse() is how to tell them apart, so
+this driver deliberately has no model_key: pairing 0x5402 with one cabled
+PID would have the app follow a swap onto the wrong mouse for everyone
+whose dongle carries a different model (issue #11).
 
 USB:
     VID 0x3710
     PID 0x5402
     Interface 3
+
+Power and identity registers decoded from USBPcap captures of Fusion2
+1.0.5.4 on Windows, then confirmed live on Linux with a Pulsar X3 on the
+dongle (2026-10).
 """
+
+import struct
+from typing import Optional
 
 from pulsar_mouse.base import DeviceCapabilities
 from pulsar_mouse.drivers.xlite_v4 import PulsarXliteV4
 
+# Wired PIDs the dongle has been seen reporting through get_connected_mouse(),
+# or that another driver here already claims on the cable.  Fusion2 covers
+# more models than these; add a line once a dongle has been seen naming it.
+CONNECTED_MOUSE_NAMES = {
+    0x3401: 'Pulsar Xlite v4',   # xlite_v4.py's cabled PID
+    0x3409: 'Pulsar X3',         # confirmed on hardware
+}
+
 
 class PulsarXliteV4Wireless(PulsarXliteV4):
-    """Driver for the Pulsar Xlite v4 through its 1K wireless dongle."""
+    """Driver for Pulsar Fusion2 mice through the 1K wireless dongle."""
 
     capabilities: DeviceCapabilities = DeviceCapabilities(
         name='Pulsar Xlite v4 Wireless',
@@ -45,4 +72,53 @@ class PulsarXliteV4Wireless(PulsarXliteV4):
             'thumb2': 'Side Back (backward)',
             'dpi': 'DPI Button',
         },
+        wireless=True,
     )
+
+    # ── Power ─────────────────────────────────────────────────────────────
+
+    def get_power(self) -> dict:
+        # cat=0x08/reg=0x81(=0x01|0x80)/sub=0x01, profile 0, no payload:
+        # reply byte[6] is the battery percentage, as on the 8K dongle.
+        # The dongle answers 0xFF when it has no mouse to ask.
+        pct = self._read(0x08, 0x01, 0x01, 0x00)[6]
+        if pct == 0xFF:
+            raise IOError('no battery reading — is the mouse awake and paired?')
+        # cat=0x08/reg=0x83(=0x03|0x80)/sub=0x01: byte[6] is 1 while the
+        # mouse is on its charging cable, 0 otherwise.  Both states seen in
+        # the capture, where the flag drops as the cable comes out.
+        charging = bool(self._read(0x08, 0x03, 0x01, 0x00)[6])
+        return {
+            'battery_percent': pct,
+            'power_connected': charging,
+            'battery_mv': None,
+        }
+
+    # ── Identity ──────────────────────────────────────────────────────────
+
+    def get_connected_mouse(self) -> dict:
+        """Return {'vid', 'pid', 'name'} for the mouse behind the dongle.
+
+        The dongle shares one USB identity across the whole Fusion2 line,
+        so this is the only way to learn which mouse is actually on it.
+        'vid'/'pid' are the IDs the mouse enumerates with on a cable;
+        'name' is None for a model this file hasn't seen yet.
+        """
+        # cat=0x01/reg=0x84(=0x04|0x80)/sub=0x04, profile 0, no payload:
+        # reply bytes [6:8] and [8:10] are the paired mouse's VID and PID,
+        # little-endian (10 37 09 34 -> 3710:3409 in the capture).
+        rsp = self._read(0x01, 0x04, 0x04, 0x00)
+        vid, pid = struct.unpack_from('<HH', rsp, 6)
+        return {'vid': vid, 'pid': pid, 'name': CONNECTED_MOUSE_NAMES.get(pid)}
+
+    # ── Hidraw events ─────────────────────────────────────────────────────
+
+    def parse_hidraw_event(self, data: bytes) -> Optional[dict]:
+        # Once a second the dongle pushes `05 0d <value>` on its event
+        # interface, the same report the 8K dongle sends (see feinmann8k.py).
+        # Seen holding 100 with the mouse next to the dongle while the
+        # battery read 88, so it is link quality, not a second battery
+        # channel.
+        if len(data) >= 3 and data[0] == 0x05 and data[1] == 0x0d:
+            return {'signal_percent': data[2]}
+        return super().parse_hidraw_event(data)

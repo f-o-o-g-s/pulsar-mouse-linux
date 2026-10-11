@@ -51,6 +51,14 @@ def print_global(device: PulsarDevice):
         print(f"  Active profile:   {device.get_active_profile()}")
     except Exception:
         pass
+    if hasattr(device, 'get_connected_mouse'):
+        # A dongle shared across models: say which mouse is actually on it.
+        try:
+            mouse = device.get_connected_mouse()
+            ids = f"{mouse['vid']:04x}:{mouse['pid']:04x}"
+            print(f"  Mouse:            {mouse['name'] or 'unknown'} ({ids})")
+        except Exception as e:
+            print(f"  Mouse:            error ({e})")
     if hasattr(device, 'get_power'):
         try:
             pwr = device.get_power()
@@ -386,6 +394,8 @@ def main():
                     'stages': [dx for dx, _dy in dpi_info['stages'][:dpi_info['count']]],
                 },
             }
+            if hasattr(device, 'get_connected_mouse'):
+                status['mouse'] = device.get_connected_mouse()
             if caps.has_debounce:
                 lo, hi = caps.debounce_range
                 status['debounce'] = {'value': device.get_debounce(), 'min': lo, 'max': hi}
