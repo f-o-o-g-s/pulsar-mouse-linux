@@ -388,7 +388,11 @@ def main():
             except NotImplementedError:
                 active_profile = None
             status = {
-                'wireless': hasattr(device, 'get_power'),
+                # What the driver declares, where it does; the guess from
+                # get_power() is for drivers that don't.  A cabled mouse
+                # reporting its battery while it charges is not wireless.
+                'wireless': (caps.wireless if caps.wireless is not None
+                             else hasattr(device, 'get_power')),
                 'profile': profile,
                 'num_profiles': caps.num_profiles,
                 'active_profile': active_profile,
