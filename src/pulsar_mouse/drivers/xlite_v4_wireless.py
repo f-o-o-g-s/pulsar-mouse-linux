@@ -27,6 +27,7 @@ dongle (2026-10).
 """
 
 import struct
+import time
 from typing import Optional
 
 from pulsar_mouse.base import DeviceCapabilities
@@ -74,6 +75,59 @@ class PulsarXliteV4Wireless(PulsarXliteV4):
         },
         wireless=True,
     )
+
+    # ── Transport ─────────────────────────────────────────────────────────
+    #
+    # Every command here is a round trip over the air, and the dongle says
+    # so: after a SET_REPORT, GET_REPORT returns the request echoed with
+    # byte[0]=0x02 until the mouse has answered, then the answer (or, for a
+    # write, the written bytes echoed back) with byte[0]=0x01.  x2a.py's
+    # helpers were written for a cabled mouse and take the 0x02 as the end
+    # of the exchange: _cmd() returns on it at once and _read() gives up
+    # after 160 ms.  Through the dongle that loses data.  A second
+    # SET_REPORT sent while the first is still pending is dropped, the
+    # dongle then stays busy for longer than _read() waits, and the reply
+    # that eventually lands is latched and handed to whichever read comes
+    # next.  Seen on hardware while testing the power setters below: a Low
+    # Power Mode write silently not taken, and the battery reported as 1%
+    # because byte[6] of a latched reply for another register, its profile
+    # byte, was read as the percentage.
+    #
+    # Fusion2 in the captures never sends the next command until the 0x01
+    # is in hand, re-polling the same pending request every 15-30 ms, and
+    # the 8K dongle driver does the same.  So do that here, for writes as
+    # well as reads: accept only a 0x01 whose category and register echo
+    # the request, and whose profile byte echoes a per-profile request
+    # (profile 0 replies carry data there instead).  The sub-register is
+    # not compared: get_dpi_stages() asks with sub 0x15 and is answered
+    # with 0x21 on this family too.  Answers arrived on the second poll,
+    # 11 ms after the request, for every register exercised; the deadline
+    # is there for a mouse that is asleep.
+
+    _REPLY_TIMEOUT = 1.0
+    _REPLY_POLL = 0.01
+
+    def _transact(self, cmd: bytes) -> bytes:
+        self._set_report(cmd)
+        deadline = time.monotonic() + self._REPLY_TIMEOUT
+        while True:
+            rsp = self._get_report()
+            if (rsp[0] == 0x01 and rsp[1:3] == cmd[1:3]
+                    and (cmd[6] == 0x00 or rsp[6] == cmd[6])):
+                return rsp
+            if time.monotonic() >= deadline:
+                raise IOError(
+                    f"no reply from the mouse to cat=0x{cmd[1]:02x} "
+                    f"reg=0x{cmd[2]:02x} sub=0x{cmd[3]:02x} within "
+                    f"{self._REPLY_TIMEOUT * 1000:.0f} ms (last status byte "
+                    f"0x{rsp[0]:02x}; is the mouse awake and paired?)")
+            time.sleep(self._REPLY_POLL)
+
+    def _cmd(self, cat, reg, sub, profile, payload=()):
+        return self._transact(self._build(cat, reg, sub, profile, payload))
+
+    def _read(self, cat, reg, sub, profile, payload=()):
+        return self._transact(self._build_read(cat, reg, sub, profile, payload))
 
     # ── Power ─────────────────────────────────────────────────────────────
 
