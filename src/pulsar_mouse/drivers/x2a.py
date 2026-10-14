@@ -376,18 +376,31 @@ class PulsarX2A(PulsarDevice):
     # ── Hidraw support ────────────────────────────────────────────────────
 
     def find_hidraw(self) -> Optional[str]:
-        vid = f'{self.capabilities.vid_pid_pairs[0][0]:04x}'
+        """Interface 1's hidraw node, where DPI-button events arrive.
+
+        Matched on VID *and* PID, as nordic.py's is.  The Fusion2 mice and
+        the 1K dongle share VID 0x3710, so with the X3 cabled and its dongle
+        still plugged in, matching the VID alone returned the dongle's node
+        (hidraw1 sorts before hidraw11) and the cabled mouse's DPI presses
+        went unheard after a swap.
+        """
+        wanted = set(self.capabilities.vid_pid_pairs)
         for path in sorted(glob.glob('/sys/class/hidraw/hidraw*/device/uevent')):
             try:
                 with open(path) as f:
-                    text = f.read()
-                if vid not in text:
-                    continue
-                phys_line = [l for l in text.splitlines() if 'HID_PHYS' in l]
-                if phys_line and phys_line[0].endswith('/input1'):
-                    return '/dev/' + path.split('/')[4]
+                    info = dict(line.split('=', 1)
+                                for line in f.read().splitlines() if '=' in line)
             except OSError:
                 continue
+            parts = info.get('HID_ID', '').split(':')
+            if len(parts) != 3:
+                continue
+            try:
+                ids = (int(parts[1], 16), int(parts[2], 16))
+            except ValueError:
+                continue
+            if ids in wanted and info.get('HID_PHYS', '').endswith('/input1'):
+                return '/dev/' + path.split('/')[4]
         return None
 
     def parse_hidraw_event(self, data: bytes) -> Optional[dict]:
