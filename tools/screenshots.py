@@ -146,8 +146,15 @@ def asleep(device):
     """
     if not hasattr(device, 'get_power'):
         return None
+    # find_device() hands back a closed device, and the window opens and
+    # closes it around each of its own reads, so this has to as well.
+    # Without it get_power() raises on every wireless mouse, awake or not.
     try:
-        device.get_power()
+        device.open()
+        try:
+            device.get_power()
+        finally:
+            device.close()
     except Exception as e:
         return f'{type(e).__name__}: {e}'
     return None
