@@ -66,16 +66,21 @@ def _describe_seconds(seconds: int) -> str:
 def _reports_events(device) -> bool:
     """Does this driver implement hidraw event reporting at all?
 
-    Asks whether find_hidraw() is overridden, not whether it currently
-    returns a path.  Calling it is the wrong test at startup: claiming the
-    config interface makes the kernel drop its hidraw node, and on the Nordic
-    family that interface is the one carrying the events - so the tray's own
-    first read reliably hides the node for as long as it runs.  A listener
-    that called find_hidraw() once and gave up on None therefore lost the
-    race and never started, which showed up as DPI-button presses doing
-    nothing until the window was reloaded by hand.
+    Asks whether the driver declares an interface for them, not whether
+    find_hidraw() currently returns a path.  Calling it is the wrong test at
+    startup: claiming the config interface makes the kernel drop its hidraw
+    node, and on the Nordic family that interface is the one carrying the
+    events - so the tray's own first read reliably hides the node for as long
+    as it runs.  A listener that called find_hidraw() once and gave up on None
+    therefore lost the race and never started, which showed up as DPI-button
+    presses doing nothing until the window was reloaded by hand.
+
+    The built-in drivers declare _HIDRAW_INTERFACE and inherit find_hidraw()
+    from PulsarDevice, so an override check alone is False for every one of
+    them.  It stays for plugin drivers that still bring their own.
     """
-    return type(device).find_hidraw is not PulsarDevice.find_hidraw
+    return (device._HIDRAW_INTERFACE is not None
+            or type(device).find_hidraw is not PulsarDevice.find_hidraw)
 
 
 def _is_wireless(device) -> bool:

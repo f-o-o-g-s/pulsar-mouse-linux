@@ -281,6 +281,34 @@ def check_hidraw_matching(modules):
     return problems
 
 
+def check_gui_listens(modules):
+    """The GUI starts its hidraw listeners for every driver that declares
+    an event interface.
+
+    The listeners ask gui._reports_events() first, and it once asked only
+    whether find_hidraw() was overridden.  When find_hidraw() moved into
+    PulsarDevice that was False for every built-in driver, so the tray, the
+    Home page and Input Test all stopped hearing DPI presses and signal
+    quality, while find_hidraw() itself still returned the right node.
+
+    Needs GTK 4 and libadwaita to import the GUI; without them this is
+    skipped rather than failed, so driver work doesn't need a desktop.
+    """
+    try:
+        from pulsar_mouse.gui import _reports_events
+    except (ImportError, ValueError):
+        return None
+    problems = []
+    for module, mod in modules.items():
+        for cls in driver_classes(mod):
+            if getattr(cls, '_HIDRAW_INTERFACE', None) is None:
+                continue
+            if not _reports_events(cls.__new__(cls)):
+                problems.append(f'{module}: declares _HIDRAW_INTERFACE but the '
+                                f'GUI would never start a listener for it')
+    return problems
+
+
 def main() -> int:
     modules = driver_modules()
     pyproject = tomllib.loads((ROOT / 'pyproject.toml').read_text())
@@ -295,17 +323,22 @@ def main() -> int:
         ('USB IDs are unique and have udev rules', check_usb_ids(modules, udev_text)),
         ('paired drivers name one mouse each', check_model_keys(modules)),
         ('hidraw nodes are matched on VID and PID', check_hidraw_matching(modules)),
+        ('the GUI listens to every event-reporting driver', check_gui_listens(modules)),
         ('Nordic: every DPI in range encodes and reads back', per_driver(nordic, check_nordic_dpi)),
         ('Nordic: every driver can send a command', per_driver(nordic, check_nordic_dispatch)),
         ('Nordic: no driver claims a signal-quality channel',
          per_driver(nordic, check_nordic_signal_quality)),
     ]
     for title, problems in results:
+        if problems is None:
+            print(f'SKIP  {title} (pulsar_mouse.gui needs GTK 4 and libadwaita)')
+            continue
         print(f'{"PASS" if not problems else "FAIL"}  {title}')
         for problem in problems:
             print(f'      - {problem}')
     failed = sum(1 for _title, problems in results if problems)
-    print(f'\n{len(results) - failed}/{len(results)} checks passed '
+    ran = sum(1 for _title, problems in results if problems is not None)
+    print(f'\n{ran - failed}/{ran} checks passed '
           f'({len(modules)} driver modules, {len(nordic)} Nordic-family drivers)')
     return 1 if failed else 0
 
