@@ -384,11 +384,19 @@ def main():
         device.open()
         try:
             dpi_info = device.get_dpi_stages(profile=profile)
-            # Every driver has the method (the base class declares it) but
-            # only the Nordic and Feinmann ones implement it; the rest raise.
+            # Every driver has the method (the base class declares it); the
+            # ones that can't ask the mouse raise NotImplementedError.
             try:
                 active_profile = device.get_active_profile()
             except NotImplementedError:
+                active_profile = None
+            # The mouse can be on a profile this connection can't address:
+            # an X3 has six, and the 1K dongle's driver, which carries other
+            # Fusion2 mice too, allows five.  Callers hand active_profile
+            # back as --profile (the Noctalia panel does), which would then
+            # be refused, so only report one they can use.
+            if (active_profile is not None
+                    and not 1 <= active_profile <= caps.num_profiles):
                 active_profile = None
             status = {
                 # What the driver declares, where it does; the guess from

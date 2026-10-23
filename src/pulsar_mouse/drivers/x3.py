@@ -37,7 +37,10 @@ class PulsarX3(Fusion2Power, PulsarXliteV4):
         vid_pid_pairs=[(0x3710, 0x3409)],
         interface_num=3,
         report_size=64,
-        num_profiles=5,
+        # The profile list (02/82/10) answers 06 01 02 03 04 05 06, and the
+        # mouse switches to each of them, on the cable and through the 1K
+        # dongle.  The X2A lists five (#24).
+        num_profiles=6,
         max_dpi_stages=6,
         dpi_min=100,
         dpi_max=26000,

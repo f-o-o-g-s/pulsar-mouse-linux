@@ -10,12 +10,13 @@ Packet format:
   [2]     register (bit7=0: write, bit7=1: read)
   [3]     sub-register
   [4-5]   always 0x00
-  [6]     profile: 0x00=global, 0x01-0x05=profile 1-5
+  [6]     profile: 0x00=global, else 1 to capabilities.num_profiles
+          (5 on the X2A, 6 on the X3)
   [7-61]  payload
   [62-63] checksum: little-endian uint16 of sum(bytes[0:62])
 
 Global settings (profile=0): polling rate, debounce, angle snap, ripple, motion sync
-Per-profile settings (profile=1-5): DPI stages, LOD, brightness, LED effect, button bindings
+Per-profile settings (profile=1-N): DPI stages, LOD, brightness, LED effect, button bindings
 """
 
 import struct
@@ -240,6 +241,27 @@ class PulsarX2A(PulsarDevice):
     def set_motion_sync(self, enabled: bool) -> None:
         self._cmd(0x07, 0x05, 0x02, 0x00, [1 if enabled else 0])
 
+    # ── Active profile ────────────────────────────────────────────────────
+
+    # cat=0x02/reg=0x06/sub=0x01: the profile the mouse is using.  Read with
+    # profile 0, the answer is in the reply's profile byte [6].  The write
+    # carries the new profile in that same byte and no payload; put it in
+    # the payload at byte 7 instead and the X2A refuses it with 0x03 (#24).
+    # It's a live switch, not just a stored number: the active DPI stage
+    # read through profile 0 (05/81/02) follows it straight away on the X3
+    # and the X2A, and on the X3's cable a write through profile 0 sent
+    # right after the switch lands on the new profile.  The X3 also
+    # announces a switch on interface 1 as 05 01 <profile> (seen through
+    # the 1K dongle), but the X2A doesn't, so nothing here waits for that.
+    def get_active_profile(self) -> int:
+        return self._read(0x02, 0x06, 0x01, 0x00)[6]
+
+    def set_active_profile(self, profile: int) -> None:
+        count = self.capabilities.num_profiles
+        if not 1 <= profile <= count:
+            raise ValueError(f"Profile must be 1-{count}")
+        self._cmd(0x02, 0x06, 0x01, profile)
+
     # ── Per-profile: LOD ──────────────────────────────────────────────────
 
     def get_lod(self, profile: int) -> int:
@@ -365,6 +387,8 @@ class PulsarX2A(PulsarDevice):
     # profile 5 alone, and reading all of it back.
     def reset_to_defaults(self, profile: int) -> None:
         self._cmd(0x02, 0x05, 0x01, profile)
+        # 02/06/01 is the profile switch (set_active_profile()), so a reset
+        # also leaves the mouse on `profile`.
         pkt = self._build(0x02, 0x06, 0x01, profile)
         self._set_report(pkt)
         try:
