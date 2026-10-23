@@ -1,11 +1,18 @@
 """Regression tests for the mouse-button action codes (hid.py, #24)."""
 
+import re
 import unittest
 
 from pulsar_mouse.drivers.feinmann8k import PulsarFeinmann8K
 from pulsar_mouse.drivers.nordic import _NORDIC_MOUSE_TO_SONIX, _SONIX_MOUSE_TO_NORDIC
 from pulsar_mouse.drivers.x2_crazylight import PulsarX2CrazyLight
+from pulsar_mouse.drivers.x2_wired import PulsarX2Wired
+from pulsar_mouse.drivers.x2a import BUTTON_DEFAULTS, PulsarX2A
+from pulsar_mouse.drivers.x2h import PulsarX2H
 from pulsar_mouse.drivers.x3 import PulsarX3
+from pulsar_mouse.drivers.xlite_v4 import PulsarXliteV4
+from pulsar_mouse.drivers.xlite_v4_wireless import PulsarXliteV4Wireless
+from pulsar_mouse.drivers.xlite_wired import PulsarXliteWired
 from pulsar_mouse.hid import BTN_TYPE_MOUSE, describe_button, parse_button_function
 
 
@@ -15,6 +22,21 @@ class MouseActionCodeTests(unittest.TestCase):
         self.assertEqual(parse_button_function('forward'), (BTN_TYPE_MOUSE, 0x05, 0x00))
         self.assertEqual(describe_button(BTN_TYPE_MOUSE, 0x04, 0x00), 'backward')
         self.assertEqual(describe_button(BTN_TYPE_MOUSE, 0x05, 0x00), 'forward')
+
+    def test_side_button_labels_name_their_factory_action(self):
+        # Out of the box a side button's binding is its own id as a mouse
+        # code (0x04 back, 0x05 forward, 0x06 back, 0x07 forward), and its
+        # label ends in that action, so labels and codes can't drift apart.
+        for cls in (PulsarX2A, PulsarX2H, PulsarX2Wired, PulsarXliteWired, PulsarXliteV4,
+                    PulsarX3, PulsarXliteV4Wireless, PulsarFeinmann8K):
+            caps = cls.capabilities
+            for name, bid in caps.buttons.items():
+                if bid not in (0x04, 0x05, 0x06, 0x07):
+                    continue
+                said = re.search(r'\((\w+)\)$', caps.button_labels[name]).group(1)
+                self.assertEqual({'back': 'backward'}.get(said, said),
+                                 describe_button(*BUTTON_DEFAULTS[bid]),
+                                 f'{cls.__name__} {name}')
 
     def test_nordic_bitmasks_keep_their_meaning(self):
         # The Nordic bitmask is the HID button as a bit: 0x08 is button 4,

@@ -46,10 +46,10 @@ BUTTON_DEFAULTS = {
     0x01: (BTN_TYPE_MOUSE, 0x01, 0x00),  # left   → left click
     0x02: (BTN_TYPE_MOUSE, 0x02, 0x00),  # right  → right click
     0x03: (BTN_TYPE_MOUSE, 0x03, 0x00),  # wheel  → wheel click
-    0x04: (BTN_TYPE_MOUSE, 0x04, 0x00),  # thumb1 → forward
-    0x05: (BTN_TYPE_MOUSE, 0x05, 0x00),  # thumb2 → backward
-    0x06: (BTN_TYPE_MOUSE, 0x04, 0x00),  # thumb3 → forward
-    0x07: (BTN_TYPE_MOUSE, 0x05, 0x00),  # thumb4 → backward
+    0x04: (BTN_TYPE_MOUSE, 0x04, 0x00),  # thumb1 → backward
+    0x05: (BTN_TYPE_MOUSE, 0x05, 0x00),  # thumb2 → forward
+    0x06: (BTN_TYPE_MOUSE, 0x04, 0x00),  # thumb3 → backward
+    0x07: (BTN_TYPE_MOUSE, 0x05, 0x00),  # thumb4 → forward
     0x0b: (BTN_TYPE_DPI,   0x03, 0x00),  # dpi    → dpiloop
 }
 
@@ -71,19 +71,25 @@ class PulsarX2A(PulsarDevice):
             'left':   0x01,
             'right':  0x02,
             'wheel':  0x03,
-            'thumb1': 0x04,   # left thumb front (default: forward)
-            'thumb2': 0x05,   # left thumb back  (default: backward)
-            'thumb3': 0x06,   # right thumb front (default: forward)
-            'thumb4': 0x07,   # right thumb back  (default: backward)
+            'thumb1': 0x04,   # left side, rear   (default: backward)
+            'thumb2': 0x05,   # left side, front  (default: forward)
+            'thumb3': 0x06,   # right side, rear  (default: backward)
+            'thumb4': 0x07,   # right side, front (default: forward)
             'dpi':    0x0b,
         },
         polling_rates=[125, 250, 500, 1000],
         lod_values=[1, 2],
+        # Both flanks the same way round, rear back and front forward:
+        # measured on the X2A by binding 0x04 and 0x05 to scroll up and down,
+        # so all four side buttons sent something different, and pressing
+        # them one at a time (#24).
         button_labels={
             'left': 'Left Click', 'right': 'Right Click',
             'wheel': 'Wheel Click',
-            'thumb1': 'Thumb 1 (forward)', 'thumb2': 'Thumb 2 (back)',
-            'thumb3': 'Thumb 3 (forward)', 'thumb4': 'Thumb 4 (back)',
+            'thumb1': 'Left Side Back (backward)',
+            'thumb2': 'Left Side Front (forward)',
+            'thumb3': 'Right Side Back (backward)',
+            'thumb4': 'Right Side Front (forward)',
             'dpi': 'DPI Button',
         },
     )

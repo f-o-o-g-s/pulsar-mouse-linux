@@ -49,8 +49,8 @@ class PulsarX3(Fusion2Power, PulsarXliteV4):
             'left':   0x01,
             'right':  0x02,
             'wheel':  0x03,
-            'thumb1': 0x04,
-            'thumb2': 0x05,
+            'thumb1': 0x04,   # side, rear  (default: backward)
+            'thumb2': 0x05,   # side, front (default: forward)
             'dpi':    0x0b,
         },
         polling_rates=[125, 250, 500, 1000],
@@ -59,8 +59,8 @@ class PulsarX3(Fusion2Power, PulsarXliteV4):
             'left': 'Left Click',
             'right': 'Right Click',
             'wheel': 'Wheel Click',
-            'thumb1': 'Side Front (forward)',
-            'thumb2': 'Side Back (backward)',
+            'thumb1': 'Side Back (backward)',
+            'thumb2': 'Side Front (forward)',
             'dpi': 'DPI Button',
         },
         wireless=False,

@@ -33,8 +33,10 @@ class PulsarX2H(PulsarX2A):
             'left':   0x01,
             'right':  0x02,
             'wheel':  0x03,
-            'thumb1': 0x04,   # left side front (default: forward)
-            'thumb2': 0x05,   # left side back  (default: backward)
+            # Rear and front as measured on the X3 and the X2A (#24); not
+            # checked on an X2H.
+            'thumb1': 0x04,   # left side back  (default: backward)
+            'thumb2': 0x05,   # left side front (default: forward)
             'dpi':    0x0b,
         },
         polling_rates=[125, 250, 500, 1000],
@@ -42,7 +44,7 @@ class PulsarX2H(PulsarX2A):
         button_labels={
             'left': 'Left Click', 'right': 'Right Click',
             'wheel': 'Wheel Click',
-            'thumb1': 'Side Front (forward)', 'thumb2': 'Side Back (backward)',
+            'thumb1': 'Side Back (backward)', 'thumb2': 'Side Front (forward)',
             'dpi': 'DPI Button',
         },
     )
