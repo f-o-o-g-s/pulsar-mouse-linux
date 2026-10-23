@@ -156,8 +156,8 @@ _NORDIC_MOUSE_TO_SONIX = {
     0x01: 0x01,  # left
     0x02: 0x02,  # right
     0x04: 0x03,  # wheel
-    0x08: 0x05,  # backward (back)
-    0x10: 0x04,  # forward
+    0x08: 0x04,  # backward (back)
+    0x10: 0x05,  # forward
 }
 _SONIX_MOUSE_TO_NORDIC = {v: k for k, v in _NORDIC_MOUSE_TO_SONIX.items()}
 

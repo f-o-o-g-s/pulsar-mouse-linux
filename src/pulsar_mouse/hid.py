@@ -19,9 +19,17 @@ BTN_TYPE_XCLICK    = 0x0e   # double-click
 
 # ── Mouse click actions (type 0x01) ─────────────────────────────────────────
 
+# The action is the HID button number, so 4 is back (BTN_SIDE on Linux) and
+# 5 is forward (BTN_EXTRA).  These two used to be swapped, so binding a
+# button to "forward" made it go back.  Measured on an X3, by turning id 4
+# off (the rear button went silent, the front one still sent BTN_EXTRA)
+# and on again (the rear one sent BTN_SIDE), and on an X2A, by turning each
+# side button off in turn (#24).  Then end to end on the X3's cable: the
+# rear button bound to "forward" sends BTN_EXTRA, to "backward" BTN_SIDE.
+# nordic.py's bitmask is the same button number as a bit (0x08 = button 4).
 MOUSE_ACTIONS = {
     'left': 0x01, 'right': 0x02, 'wheel': 0x03,
-    'forward': 0x04, 'backward': 0x05,
+    'forward': 0x05, 'backward': 0x04,
 }
 MOUSE_ACTION_NAMES = {v: k for k, v in MOUSE_ACTIONS.items()}
 
