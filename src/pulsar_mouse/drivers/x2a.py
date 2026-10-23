@@ -197,6 +197,28 @@ class PulsarX2A(PulsarDevice):
                           f"(after {self._ACK_POLLS} polls)")
         return rsp
 
+    # ── Device information ────────────────────────────────────────────────
+
+    def get_firmware_version(self) -> str:
+        # cat=0x01/reg=0x87(=0x07|0x80)/sub=0x04, profile 0, no payload.  A
+        # reply's byte 3 is its data length (02/82/10, asked with 10, answers
+        # 07 and seven bytes), and here it is 04: bytes [6:10] are one
+        # four-byte little-endian version.  The X3's two set bytes are its
+        # USB bcdDevice, low byte first; the X2A's one set byte, 08 at byte 8,
+        # is the high byte of its bcdDevice, one place further up:
+        #
+        #   X3     16 10 00 00  ->  00.00.10.16    bcdDevice 10.16
+        #   X2A    00 00 08 00  ->  00.08.00.00    bcdDevice  8.00
+        #
+        # So no fixed pair of bytes fits both, and all four are shown,
+        # highest first.  Through the 1K dongle the X3 answers the same
+        # 10.16, its own version and not the dongle's (bcdDevice 40.16), so
+        # on the dongle this is the mouse's firmware.  A sleeping mouse
+        # behind the dongle doesn't answer it at all (status 05 on every
+        # poll), so this raises rather than make a version up.
+        rsp = self._read(0x01, 0x07, 0x04, 0x00)
+        return '.'.join(f'{b:02X}' for b in reversed(rsp[6:10]))
+
     # ── Global settings ───────────────────────────────────────────────────
 
     def get_polling_rate(self) -> int:
