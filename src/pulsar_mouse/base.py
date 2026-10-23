@@ -11,6 +11,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
+# See PulsarDevice._V1_EXPORTS_SWAP_BACK_FORWARD.
+_V1_BACK_FORWARD = {'forward': 'backward', 'backward': 'forward'}
+
 
 @dataclass
 class DeviceCapabilities:
@@ -249,6 +252,13 @@ class PulsarDevice(ABC):
         from pulsar_mouse.hid import parse_button_function
         return parse_button_function(spec)
 
+    # Profile files saved before back and forward were fixed (#24) say
+    # 'version': 1 and, on a driver that sends hid.py's codes as they are,
+    # name those two the wrong way round: their 'forward' was code 4, which
+    # is back.  Such drivers set this, and import_profile() swaps the two
+    # names back, so an old file restores what it saved.
+    _V1_EXPORTS_SWAP_BACK_FORWARD = False
+
     # ── Hidraw (for tray / DPI notifications) ─────────────────────────────
 
     # The interface whose hidraw node carries this mouse's unprompted
@@ -318,7 +328,7 @@ class PulsarDevice(ABC):
         caps = self.capabilities
         data = {
             'format': 'pulsar-mouse-profile',
-            'version': 1,
+            'version': 2,
             'device': caps.name,
             'profile': profile,
         }
@@ -406,12 +416,17 @@ class PulsarDevice(ABC):
             except Exception as e:
                 warnings.append(f'Breathe speed: {e}')
         if 'buttons' in data:
+            swap = (self._V1_EXPORTS_SWAP_BACK_FORWARD
+                    and data.get('version', 1) == 1)
             for name, func_str in data['buttons'].items():
                 bid = caps.buttons.get(name)
                 if bid is None:
                     warnings.append(f'Button "{name}" not found on this device')
                     continue
                 try:
+                    if swap:
+                        func_str = _V1_BACK_FORWARD.get(func_str.strip().lower(),
+                                                        func_str)
                     t, a1, a2 = self.parse_button_function(func_str)
                     self.set_button(bid, t, a1, a2, profile)
                 except Exception as e:

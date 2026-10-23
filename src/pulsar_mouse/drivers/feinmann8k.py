@@ -184,6 +184,10 @@ class PulsarFeinmann8K(PulsarDevice):
 
     _WVALUE = 0x0300      # HID Feature report, report ID 0
 
+    # hid.py's back and forward codes go to the mouse as they are; see
+    # PulsarDevice._V1_EXPORTS_SWAP_BACK_FORWARD.
+    _V1_EXPORTS_SWAP_BACK_FORWARD = True
+
     def __init__(self):
         self._dev = None
 
