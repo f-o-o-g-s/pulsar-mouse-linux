@@ -1,7 +1,8 @@
 """Regression tests for the Fusion2 family's cabled read (x2a.py): a read the
-mouse dropped is sent again (#21)."""
+mouse dropped is sent again (#21), until the open has had an answer (#25)."""
 
 import unittest
+from unittest.mock import patch
 
 from pulsar_mouse.drivers.x3 import PulsarX3
 from pulsar_mouse.drivers.xlite_v4_wireless import PulsarXliteV4Wireless
@@ -61,6 +62,37 @@ class DroppedReadTests(unittest.TestCase):
     def test_read_never_taken_gives_up_after_the_resends(self):
         mouse = ScriptedX3(dropped=1000)
         with self.assertRaisesRegex(IOError, '0x00'):
+            mouse.get_polling_rate()
+        self.assertEqual(len(mouse.sent), PulsarX3._READ_RESENDS + 1)
+
+    def test_first_answer_ends_the_resends(self):
+        # After an answer a dropped read fails after its polls, as it did
+        # before there were resends.
+        mouse = ScriptedX3()
+        self.assertEqual(mouse.get_polling_rate(), 1000)
+        mouse.dropped = 1000    # takes nothing from here on
+        with self.assertRaisesRegex(
+                IOError, rf'0x00 \(after {PulsarX3._ACK_POLLS} polls\)'):
+            mouse.get_polling_rate()
+        self.assertEqual(len(mouse.sent), 2)
+
+    def test_resends_are_shared_by_the_open(self):
+        # A pass the mouse never answers spends them once, not once a read.
+        mouse = ScriptedX3(dropped=1000)
+        for _ in range(25):
+            with self.assertRaisesRegex(IOError, '0x00'):
+                mouse.get_polling_rate()
+        self.assertEqual(len(mouse.sent), PulsarX3._READ_RESENDS + 25)
+
+    def test_open_gives_the_resends_back(self):
+        mouse = ScriptedX3(dropped=1000)
+        with self.assertRaises(IOError):
+            mouse.get_polling_rate()
+        with patch('pulsar_mouse.drivers.x2a.usb.core.find'), \
+                patch('pulsar_mouse.drivers.x2a.usb.util.claim_interface'):
+            mouse.open()
+        mouse.sent.clear()
+        with self.assertRaises(IOError):
             mouse.get_polling_rate()
         self.assertEqual(len(mouse.sent), PulsarX3._READ_RESENDS + 1)
 

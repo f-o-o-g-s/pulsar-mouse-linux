@@ -91,6 +91,7 @@ class PulsarX2A(PulsarDevice):
 
     def __init__(self):
         self._dev = None
+        self._read_resends_left = self._READ_RESENDS
 
     # ── Connection lifecycle ──────────────────────────────────────────────
 
@@ -106,6 +107,7 @@ class PulsarX2A(PulsarDevice):
             dev.detach_kernel_driver(caps.interface_num)
         usb.util.claim_interface(dev, caps.interface_num)
         self._dev = dev
+        self._read_resends_left = self._READ_RESENDS   # see _READ_RESENDS
 
     def close(self) -> None:
         if self._dev is None:
@@ -171,10 +173,19 @@ class PulsarX2A(PulsarDevice):
     # 0.63 s after the cable arrived, and answered at 0.40, 0.78 and 1.17 s.
     # So rather than guess the window, resend: with the polls, the delay
     # below puts sends about 0.26 s apart, the last one about 1.55 s after
-    # the first, more than twice the latest drop seen.  A read that is
-    # answered sends once as before (1000 reads on a cabled X3, none resent).
-    # The cost is a read that never gets an answer: about 1.7 s to fail
-    # instead of about 0.16 s.
+    # the first, more than twice the latest drop seen.
+    #
+    # Only at the start of an open, though.  Once a read has been answered,
+    # every later read in that open has answered on its first poll in every
+    # measurement so far: after each swap above (up to 34 reads), 1000 in a
+    # row on a cabled X3, 67 on an X2A.  So the first answer after open()
+    # ends the resends, and until then the _READ_RESENDS are shared by all
+    # the reads instead of given to each.  A read that is answered sends
+    # once as before.  A mouse that answers nothing costs about 1.6 s on the
+    # first read (1.58 s measured on an X2A) and 0.14 s on each one after
+    # it, as before the resends, so a 25-read GUI pass, which holds
+    # _USB_LOCK throughout, takes about 5 s, where resending every read
+    # would take about 40 s.
     #
     # Only 0x00 is resent.  0x02 means the mouse has the command and is still
     # on it, and a second copy then is how the dongle loses replies (#15).
@@ -223,17 +234,20 @@ class PulsarX2A(PulsarDevice):
 
     def _read(self, cat, reg, sub, profile, payload=()):
         cmd = self._build_read(cat, reg, sub, profile, payload)
-        for sends in range(1, self._READ_RESENDS + 2):
-            if sends > 1:
-                time.sleep(self._READ_RESEND_DELAY)
+        self._set_report(cmd)
+        rsp = self._poll_ack((0x01,))
+        sends = 1
+        while rsp[0] == 0x00 and self._read_resends_left > 0:
+            self._read_resends_left -= 1
+            time.sleep(self._READ_RESEND_DELAY)
             self._set_report(cmd)
             rsp = self._poll_ack((0x01,))
-            if rsp[0] != 0x00:
-                break
+            sends += 1
         if rsp[0] != 0x01:
             sent = f" each, sent {sends} times" if sends > 1 else ""
             raise IOError(f"Bad response direction byte: 0x{rsp[0]:02x} "
                           f"(after {self._ACK_POLLS} polls{sent})")
+        self._read_resends_left = 0
         return rsp
 
     # ── Global settings ───────────────────────────────────────────────────
