@@ -230,8 +230,16 @@ class PulsarXliteV4Wireless(Fusion2Power, PulsarXliteV4):
         num_profiles=5,
         max_dpi_stages=6,
         dpi_min=100,
-        dpi_max=26000,
-        dpi_step=100,
+        # Every mouse Pulsar sells this dongle for - its Dongle Kit page
+        # names the Xlite v4, X2 v3, X2H v3, X2A v3 and X3 - has the XS-1
+        # sensor, listed on each product page at 32,000 DPI, "Adjustable DPI
+        # in 10-unit", and the X3 keeps 26010, 31990 and 32000 exactly
+        # through it (x3.py).  26000 in steps of 100 is the X2A Wired's
+        # PAW3395, from x2a.py, and was too low here: the GUI's stage rows
+        # stop at dpi_max, so a stage above it set on the cable read back as
+        # 26000 and any Apply through the dongle wrote that over it.
+        dpi_max=32000,
+        dpi_step=10,
         buttons={
             'left':   0x01,
             'right':  0x02,
